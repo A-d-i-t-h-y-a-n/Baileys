@@ -135,11 +135,7 @@ export default (
 			presences[id] = presences[id] || {}
 			Object.assign(presences[id], update)
 		})
-		ev.on('chats.delete', deletions => {
-			for(const item of deletions) {
-				chats.deleteById(item)
-			}
-		})
+		
 		ev.on('messages.upsert', ({ messages: newMessages, type }) => {
 			switch (type) {
 			case 'append':
@@ -171,19 +167,6 @@ export default (
 				const result = list.updateAssign(key.id!, update)
 				if(!result) {
 					logger.debug({ update }, 'got update for non-existent message')
-				}
-			}
-		})
-		ev.on('messages.delete', item => {
-			if('all' in item) {
-				const list = messages[item.jid]
-				list?.clear()
-			} else {
-				const jid = item.keys[0].remoteJid!
-				const list = messages[jid]
-				if(list) {
-					const idSet = new Set(item.keys.map(k => k.id))
-					list.filter(m => !idSet.has(m.key.id))
 				}
 			}
 		})
