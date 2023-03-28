@@ -1,7 +1,8 @@
 import { randomBytes } from 'crypto'
 import NodeCache from 'node-cache'
 import type { Logger } from 'pino'
-import type { AuthenticationCreds, SignalDataSet, SignalDataTypeMap, SignalKeyStore, SignalKeyStoreWithTransaction, TransactionCapabilityOptions } from '../Types'
+import { DEFAULT_CACHE_TTLS } from '../Defaults'
+import type { AuthenticationCreds, CacheStore, SignalDataSet, SignalDataTypeMap, SignalKeyStore, SignalKeyStoreWithTransaction, TransactionCapabilityOptions } from '../Types'
 import { Curve, signedKeyPair } from './crypto'
 import { delay, generateRegistrationId } from './generics'
 
@@ -9,16 +10,17 @@ import { delay, generateRegistrationId } from './generics'
  * Adds caching capability to a SignalKeyStore
  * @param store the store to add caching to
  * @param logger to log trace events
- * @param opts NodeCache options
+ * @param _cache cache store to use
  */
 export function makeCacheableSignalKeyStore(
 	store: SignalKeyStore,
 	logger: Logger,
-	opts?: NodeCache.Options
+	_cache?: CacheStore
 ): SignalKeyStore {
-	const cache = new NodeCache({
-		...opts || { },
+	const cache = _cache || new NodeCache({
+		stdTTL: DEFAULT_CACHE_TTLS.SIGNAL_STORE, // 5 minutes
 		useClones: false,
+		deleteOnExpire: true,
 	})
 
 	function getUniqueId(type: string, id: string) {
@@ -95,15 +97,21 @@ export const addTransactionCapability = (
 	 * prefetches some data and stores in memory,
 	 * useful if these data points will be used together often
 	 * */
-	const prefetch = async(type: keyof SignalDataTypeMap, ids: string[]) => {
+	const prefetch = async<T extends keyof SignalDataTypeMap>(type: T, ids: string[]) => {
 		const dict = transactionCache[type]
-		const idsRequiringFetch = dict ? ids.filter(item => !(item in dict)) : ids
+		const idsRequiringFetch = dict
+			? ids.filter(item => typeof dict[item] !== 'undefined')
+			: ids
 		// only fetch if there are any items to fetch
 		if(idsRequiringFetch.length) {
 			dbQueriesInTransaction += 1
 			const result = await state.get(type, idsRequiringFetch)
 
-			transactionCache[type] = Object.assign(transactionCache[type] || { }, result)
+			transactionCache[type] ||= {}
+			transactionCache[type] = Object.assign(
+				transactionCache[type]!,
+				result
+			)
 		}
 	}
 
